@@ -4,6 +4,7 @@ import os
 import hashlib
 import zlib
 import io
+import scanmod
 
 VirusDB = [] # 악성코드 패턴은 모두 virus.db에 존재함.
 vdb = [] # 가공된 악성코드 DB가 저장된다.
@@ -94,7 +95,7 @@ if __name__ == '__main__':
         buf = fp.read()
         fp.close()
         
-        m = hashlib.md5()
+        m = hashlib.md5() # MD5 해시를 이용한 악성코드 검사
         m.update(buf)
         fmd5 = m.hexdigest()
         
