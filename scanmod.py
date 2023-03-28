@@ -46,6 +46,8 @@ def ScanStr(fp, offset, mal_str):
     
 # 악성코드 검사를 진행한다.
 def ScanVirus(vdb, vsize, sdb, fname):
+    print('[*] New ScanVirus')
+    
     # MD5 해시를 이용해서 악성코드를 검사한다.
     ret, vname = ScanMD5(vdb, vsize, fname)
     if ret == True:

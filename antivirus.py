@@ -4,6 +4,8 @@ import os
 import hashlib
 import zlib
 import io
+import pkgutil
+
 import scanmod
 import curemod
 
@@ -100,6 +102,16 @@ if __name__ == '__main__':
         exit(0)
         
     fname = sys.argv[1] # 악성코드 검사 대상 파일
+    
+    try:
+        m = 'scanmod' # 동적 로딩할 모듈 이름(파일 이름)
+        loader = pkgutil.find_loader(m) # 현재 폴더에서 모듈을 찾음
+        module = loader.load_module(m) # 찾은 모듈을 로딩함
+        # 진단 함수 호출 명령어 구성 작업
+        cmd = 'ret, vname = module.ScanVirus(vdb, vsize, sdb, fname)'
+        exec (cmd) # 명령어 실행
+    except ImportError:
+        ret, vname = scanmod.ScanVirus(vdb, vsize, sdb, fname)
     
     size = os.path.getsize(fname) # 검사 대상 파일 크기를 구한다.
     if vsize.count(size):
