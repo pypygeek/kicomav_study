@@ -6,7 +6,7 @@ class KAVMain:
     def init(self, plugins_path):
         """플러그인 엔진을 초기화한다.
         Args: 
-            plugins_path - 플러그인 엔진의 위치
+            arg1: plugins_path - 플러그인 엔진의 위치
         Returns:
             0 - 성공
             other - 실패
