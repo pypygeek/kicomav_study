@@ -7,6 +7,11 @@ import random
 import shutil
 import struct
 import zlib
+import marshal
+import imp
+import sys
+import importlib
+import types
 
 import k2rc4
 import k2timelib
@@ -37,7 +42,7 @@ def make(src_fname, debug=False):
     
     # 현재 날짜와 시간을 구한다.
     ret_date = k2timelib.get_now_date()
-    ret_time = k2timelib.get_mow_time()
+    ret_time = k2timelib.get_now_time()
     
     # 날짜와 시간 값을 2Byte로 변경한다.
     val_date = struct.pack('<H', ret_date)
@@ -194,7 +199,7 @@ class KMD(KMDConstants):
         
         # KMD 파일 시간 읽기
         tmp = self.__kmd_data[self.KMD_TIME_OFSSET:self.KMD_TIME_OFSSET+self.KMD_TIME_LENGTH]
-        self.time = k2timelib.convert_time(struct.unpack('<H', tmp)[0])
+        self.time = k2timelib.covert_time(struct.unpack('<H', tmp)[0])
         
         # KMD 파일에서 MD5 읽기
         e_md5hash = self.__get_md5()
@@ -243,3 +248,21 @@ class KMD(KMDConstants):
         """
         e_md5 = self.__kmd_data[self.KMD_MD5_OFFSET:]
         return e_md5
+
+def load(mod_name, buf):
+    """주어진 모듈 이름으로 파이썬 코드를 메모리에 로딩한다.
+    Args:
+        args1: mod_name - 모듈 이름
+        args2: buf - 파이썬 코드 (pyc 시그니처 포함)
+    Returns: 
+        로딩된 모듈 Object
+    """
+    if buf[:4] == importlib.util.MAGIC_NUMBER: # pyc 시그너처가 존재하는가?
+        code = marshal.loads(buf[16:]) # pyc에서 파이썬 코드를 로딩한다.
+        module = types.ModuleType(mod_name) # 새로운 모듈 생성한다.
+        exec (code, module.__dict__) # pyc 파이썬 코드와 모듈을 연결한다.
+        sys.modules[mod_name] = module # 전역에서 사용가능하게 등록한다.
+        
+        return module
+    else:
+        return None
