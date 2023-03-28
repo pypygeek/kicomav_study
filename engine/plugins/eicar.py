@@ -51,5 +51,6 @@ class KavMain:
         info['version'] = '1.1'
         info['title'] = 'EICAR Scan Engine'
         info['kmd_nmae'] = 'eicar'
+        info['sig_num'] = 1 # 진단/치료 가능한 악성코드 수
         
         return info
