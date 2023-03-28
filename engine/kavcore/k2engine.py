@@ -130,6 +130,28 @@ class EngineInstance:
         self.set_options() # 기본 옵션을 설정한다.
         
         self.kavmain_inst = [] # 모든 플러그인의 KavMain 인스턴스
+
+        self.result = {}
+        self.identified_virus = set()
+
+    def set_result(self):
+        """백신 엔진의 악성코드 검사 결과를 초기화한다.
+        """
+        self.result['Folders'] = 0
+        self.result['Files'] = 0
+        self.result['Infected_files'] = 0
+        self.result['Identified_viruses'] = 0
+        self.result['IO_errors'] = 0
+
+    def get_result(self):
+        """ 백신 엔진의 악성코드 검사 결과를 얻는다.
+        Returns:
+            악성코드 검사 결과
+        """
+        # 지금까지 발견한 유니크한 악성코드의 수를 카운트한다.
+        self.result['Identified_viruses'] = len(self.identified_virus)
+        
+        return self.result
  
     def set_options(self, options=None):
         """옵션을 설정한다.
@@ -312,7 +334,7 @@ class EngineInstance:
                 
             return ret, vname, mid, eid
         except IOError:
-            pass
+            self.result['IO_errors'] += 1 # 파일 I/O 오류 발생 수
         
         return False, "", -1, -1
     
@@ -362,6 +384,8 @@ class EngineInstance:
                 # 콜백 호출 또는 검사 리턴값 생성
                 ret_value['result'] = False # 폴더이므로 악성코드 없음
                 ret_value['filename'] = real_name # 검사 파일 이름
+
+                self.result['Folders'] += 1 # 폴더 개수 카운트
                 
                 if self.options['opt_list']: # 옵션 내용 중 모든 리스트 출력인가?
                     if isinstance(cb_fn, types.FunctionType): # 콜백 함수가 존재하는가?
@@ -373,12 +397,21 @@ class EngineInstance:
                 elif os.path.isfile(real_name): # 검사 대상이 파일인가?
                     # 3. 파일로 악성코드 검사
                     ret, vname, mid, eid = self.__scan_file(real_name)
+
+                    # 악성코드 진단 개수 카운트
+                    if ret:
+                        self.result['Infected_files'] += 1
+                        self.identified_virus.update([vname])
+
+                    self.result['Files'] += 1 # 파일 개수 카운트
+
                     # 콜백 호출 또는 검사 리턴값 생성
                     ret_value['result'] = ret # 악성코드 발견 여부
                     ret_value['engine_id'] = eid # 엔진 ID
                     ret_value['virus_name'] = vname # 악성코드 이름
                     ret_value['virus_id'] = mid # 악성코드 ID
                     ret_value['filename'] = real_name # 검사 파일 이름
+
                     if self.options['opt_list']: # 모든 리스트 출력인가?
                         if isinstance(cb_fn, types.FunctionType):
                             cb_fn(ret_value)

@@ -158,6 +158,40 @@ def listvirus_callback(plugin_name, vnames):
     for vname in vnames:
         print ('%-50s [%s.kmd]' % (vname, plugin_name))
 
+# scan의 콜백 함수
+def scan_callback(ret_value):
+    real_name = ret_value['filename']
+    disp_name = '%s' % real_name
+
+    if ret_value['result']:
+        state = 'infected'
+        vname = ret_value['virus_name']
+        message = '%s : %s' % (state, vname)
+        message_color = FOREGROUND_RED | FOREGROUND_INTENSITY
+    else:
+        message = 'ok'
+        message_color = FOREGROUND_GREY | FOREGROUND_INTENSITY
+    
+    # display_line(disp_name, message, message_color)
+
+def print_result(result):
+    """악성코드 검사 결과를 출력한다.
+    Argrs:
+        args1: result - 악성코드 검사 결과
+    """
+    print()
+    print()
+
+    cprint ('Results:\n', FOREGROUND_GREY | FOREGROUND_INTENSITY)
+    cprint ('Folders :%d\n' % result['Folders'], FOREGROUND_GREY | FOREGROUND_INTENSITY)
+    cprint ('Files :%d\n' % result['Files'], FOREGROUND_GREY | FOREGROUND_INTENSITY)
+    cprint ('Infected files :%d\n' % result['Infected_files'], FOREGROUND_GREY | FOREGROUND_INTENSITY)
+    cprint ('Identified viruses:%d\n' % result['Identified_viruses'], FOREGROUND_GREY | FOREGROUND_INTENSITY)
+    cprint ('I/O errors :%d\n' % result['IO_errors'], FOREGROUND_GREY | FOREGROUND_INTENSITY)
+
+    print()
+
+
 def main():
     global NOCOLOR
     # 옵션 분석
@@ -213,15 +247,21 @@ def main():
         kav.listvirus(listvirus_callback)
     else:
         if args:
+            kav.set_result() # 악성코드 검사 결과를 조회
             # 검사용 Path (다중 경로 지원)
             for scan_path in args: # 옵션을 제외한 첫번째가 검사 대상
                 scan_path = os.path.abspath(scan_path)
             
                 if os.path.exists(scan_path): # 폴더 혹은 파일이 존재하는가?
-                    print (scan_path)
+                    kav.scan(scan_path, scan_callback)
                 else:
                     print_error('Invalid path: \'%s\'' % scan_path)
+
+            # 악성코드 검사 결과 출력
+            ret = kav.get_result()
+            print_result(ret)
+
     kav.uninit()
-    
+
 if __name__ == '__main__':
     main()
