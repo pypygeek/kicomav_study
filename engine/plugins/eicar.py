@@ -1,7 +1,7 @@
 """eicar 플러그인 엔진"""
 #-*- coding: utf-8 -*-
 import os
-import hashlib
+import cryptolib
 
 class KavMain:
     def init(self, plugins_path):
@@ -16,14 +16,12 @@ class KavMain:
             
             size = os.path.getsize(filename)
             if size == 68: # EICAR Test 악성코드의 크기와 일치하는가?
-                m = hashlib.md5()
-                m.update(mm[:68])
-                fmd5 = m.hexdigest()
-                fmd5 = bytes(fmd5, 'utf-8')
-                
-                # 파일에서 얻은 해시값과 EICAR Test 악성코드이 해시값이 일치하는가?
-                if fmd5 == b'44d88612fea8a8f36de82e1278abb02f':
-                    return True, 'EICAR-Test-File (not a virus)', 0
+               # 크기가 일치한다면 MD5 해시 계산
+               fmd5 = cryptolib.md5(mm[:66])
+               
+               # 파일에서 얻은 해시값과 EICAR Test 악성코드이 해시값이 일치하는가?
+               if fmd5 == b'44d88612fea8a8f36de82e1278abb02f':
+                   return True, 'EICAR-Test-File (not a virus)', 0
         except IOError:
             pass
         
@@ -50,7 +48,7 @@ class KavMain:
         info = dict()
         
         info['author'] = 'Kei Choi'
-        info['version'] = '1.0'
+        info['version'] = '1.1'
         info['title'] = 'EICAR Scan Engine'
         info['kmd_nmae'] = 'eicar'
         
