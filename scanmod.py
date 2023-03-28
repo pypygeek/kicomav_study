@@ -43,3 +43,21 @@ def ScanStr(fp, offset, mal_str):
         return True # 악성코드 발견
     else:
         return False # 악성코드 미발견
+    
+# 악성코드 검사를 진행한다.
+def ScanVirus(vdb, vsize, sdb, fname):
+    # MD5 해시를 이용해서 악성코드를 검사한다.
+    ret, vname = ScanMD5(vdb, vsize, fname)
+    if ret == True:
+        return ret, vname
+    
+    # 특정 위치 검색법을 이용해서 악성코드를 검사한다.
+    fp = open(fname, 'rb')
+    for t in sdb:
+        if ScanStr(fp, t[0], t[1]) == True:
+            ret = True
+            vname = t[2]
+            break
+    fp.close()
+    
+    return ret, vname
