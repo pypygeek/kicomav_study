@@ -2,15 +2,19 @@
 #-*- coding: utf-8 -*-
 import os
 import sys
+import msvcrt
 from ctypes import windll, Structure, c_short, c_ushort, byref
 from optparse import OptionParser
 
 import kavcore.k2engine # 백신 커널 연동
+import kavcore.k2const
 
 # 주요 상수
 KAV_VERSION = '0.1'
 KAV_BUILDDATE = 'Feb 28 2023'
 KAV_LASTYEAR = KAV_BUILDDATE[len(KAV_BUILDDATE)-4:]
+
+g_options = None  # 옵션
 
 # 콘솔에 색깔 출력을 위한 클래스 및 함수들
 FOREGROUND_BLACK = 0x0000
@@ -178,6 +182,28 @@ def scan_callback(ret_value):
         message_color = FOREGROUND_GREY | FOREGROUND_INTENSITY
     
     # display_line(disp_name, message, message_color)
+    
+    if g_options.opt_prompt: # 프롬프트 옵션이 설정되었나?
+        while True and ret_value['result']: # 악성코드가 발견되었나?
+            cprint('Disinfect/Delete/Ignore/Quit? (d/l/i/q) : ', FOREGROUND_CYAN | FOREGROUND_INTENSITY)
+            ch = msvcrt.getch.lower()
+            ch = str(ch, 'utf-8')
+            print (ch)
+            
+            if ch == 'd':
+                return kavcore.k2const.K2_ACTION_DISINFECT # 악성코드 치료
+            elif ch == 'l':
+                return kavcore.k2const.K2_ACTION_DELETE # 악성코드 삭제
+            elif ch == 'i':
+                return kavcore.k2const.K2_ACTION_IGNORE # 악성코드 치료 무시
+            elif ch == 'q':
+                return kavcore.k2const.K2_ACTION_QUIT # 악성코드 검사 종료
+    elif g_options.opt_dis: # 치료 옵션
+        return kavcore.k2const.K2_ACTION_DISINFECT
+    elif g_options.opt_del: # 삭제 옵션
+        return kavcore.k2const.K2_ACTION_DELETE
+    
+    return kavcore.k2const.K2_ACTION_IGNORE # 악성코드 치료 무시 (기본 값)
 
 def print_result(result):
     """악성코드 검사 결과를 출력한다.
@@ -197,6 +223,39 @@ def print_result(result):
 
     print()
 
+def disinfect_callback(ret_value, action_type):
+    fs = ret_value['file_struct']
+    message = ""
+        
+    if len(fs.get_additional_filename()) != 0:
+        disp_name = '%s (%s)' % (fs.get_master_filename(), fs.get_additional_filename())
+    else:
+        disp_name = '%s' % (fs.get_master_filename())
+            
+    if fs.is_modify(): # 수정 성공?
+        if action_type == kavcore.k2const.K2_ACTION_DISINFECT:
+            message = 'disinfected' 
+        elif action_type == kavcore.k2const.K2_ACTION_DELETE:
+            message = 'deleted'
+            message_color = FOREGROUND_GREEN | FOREGROUND_INTENSITY
+    else: # 수정 실패
+        if action_type == kavcore.k2const.K2_ACTION_DISINFECT:
+            message = 'disinfection failed' 
+        elif action_type == kavcore.k2const.K2_ACTION_DELETE:
+            message = 'deletion failed'
+        message_color = FOREGROUND_RED | FOREGROUND_INTENSITY
+            
+    # display_line(disp_name, message, message_color)
+
+# update의 콜백 함수
+def update_callback(ret_file_info):
+    if ret_file_info.is_modify(): # 수정되었다면 결과 출력
+        disp_name = ret_file_info.get_filename()
+            
+        message = 'updated'
+        message_color = FOREGROUND_GREEN | FOREGROUND_INTENSITY
+            
+        # display_line(disp_name, message, message_color)
 
 def main():
     global NOCOLOR
