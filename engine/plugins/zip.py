@@ -75,3 +75,30 @@ class KavMain:
             return data
         
         return None
+    
+    def mkarc(self, arc_engine_id, arc_name, file_infos):
+        """재압축을 진행한다.
+        Args:
+            args1: arc_engine_id - 압축 가능 엔진 ID
+            args2: arc_name - 최종적으로 압축될 압축 파일 이름
+            args3: file_infos - 압축 대상 파일 정보 구조체
+        """
+        if arc_engine_id == 'arc_zip':
+            zfile = zipfile.ZipFile(arc_name, 'w')
+            
+            for file_info in file_infos:
+                rname = file_info.get_filename() # 검사 대상 파일(real_filename)
+                try:
+                    with open(rname, 'rb') as fp:
+                        buf = fp.read()
+                        
+                        # 압축 해제 대상 파일(filename_in_arc) 이름을 얻는다.
+                        a_name = file_info.get_filename_in_archive()
+                        zfile.writestr(a_name, buf)
+                except IOError:
+                    pass
+                
+            zfile.close()
+            return True
+        
+        return False

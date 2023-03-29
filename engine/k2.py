@@ -114,6 +114,7 @@ def define_options():
     usage = "Usage: %prog path[s] [options]"
     parser = ModifiedOptionParser(add_help_option=False, usage=usage)
     parser.add_option("-f", "--files", action="store_true", dest="opt_files", default=True)
+    parser.add_option("-r", "--arc", action="store_true", dest="opt_arc", default=False)
     parser.add_option("-I", "--list", action="store_true", dest="opt_list", default=False)
     parser.add_option("-V", "--vlist", action="store_true", dest="opt_vlist", default=False)
     parser.add_option("-?", "--help",
@@ -146,11 +147,12 @@ def print_usage():
 def print_options():
     options_string = \
         '''Options:
-                -f, --files scan files *
-                -I, --list display all files
-                -V, --vlist display virus list
-                -?, --help this help
-                * = default option'''
+                -f, --files     scan files *
+                -r, --arc       scan archives
+                -I, --list      display all files
+                -V, --vlist     display virus list
+                -?, --help t    his help
+                * = default     option'''
     print(options_string)
 
 # listvirus의 콜백 함수
@@ -160,8 +162,11 @@ def listvirus_callback(plugin_name, vnames):
 
 # scan의 콜백 함수
 def scan_callback(ret_value):
-    real_name = ret_value['filename']
-    disp_name = '%s' % real_name
+    fs = ret_value['file_struct']
+    if len(fs.get_additional_filename()) != 0:
+        disp_name = '%s (%s)' % (fs.get_master_filename(), fs.get_additional_filename())
+    else:
+        disp_name = '%s' % (fs.get_master_filename())
 
     if ret_value['result']:
         state = 'infected'
@@ -185,6 +190,7 @@ def print_result(result):
     cprint ('Results:\n', FOREGROUND_GREY | FOREGROUND_INTENSITY)
     cprint ('Folders :%d\n' % result['Folders'], FOREGROUND_GREY | FOREGROUND_INTENSITY)
     cprint ('Files :%d\n' % result['Files'], FOREGROUND_GREY | FOREGROUND_INTENSITY)
+    cprint ('Packed :%d\n' % result['Packed'], FOREGROUND_GREY | FOREGROUND_INTENSITY)
     cprint ('Infected files :%d\n' % result['Infected_files'], FOREGROUND_GREY | FOREGROUND_INTENSITY)
     cprint ('Identified viruses:%d\n' % result['Identified_viruses'], FOREGROUND_GREY | FOREGROUND_INTENSITY)
     cprint ('I/O errors :%d\n' % result['IO_errors'], FOREGROUND_GREY | FOREGROUND_INTENSITY)

@@ -5,8 +5,11 @@ import datetime
 import types
 import mmap
 import glob
+import tempfile
 
 import k2kmdfile
+import k2file
+import k2const
 
 class Engine:
     def __init__(self, debug=False):
@@ -350,7 +353,10 @@ class EngineInstance:
         Note:
             전체 폴더에 대해 악성코드를 검사한다.
         """
-        cb_fn = None # 콜백 함수
+
+        scan_callback_fn = None # 악성코드 검사 콜백 함수
+        disinfect_callback_fn = None # 악성코드 치료 콜백 함수
+        update_callback_fn = None # 악성코드 압축 최종 치료 콜백 함수
         
         # 악성코드 검사 결과
         ret_value = {
@@ -361,20 +367,23 @@ class EngineInstance:
             'engine_id': -1 # 악성코드를 발견한 플러그인 엔진 ID
         }
         
-        # 가변 인자 확인
-        argc = len(callback)
-        if argc == 1: # callback 함수가 존재하는지 체크
-            cb_fn = callback[0]
-        elif argc > 1: # 인자가 너무 많으면 에러
-            return -1
+        # 콜백 함수 저장
+        try:
+            scan_callback_fn = callback[0]
+            disinfect_callback_fn = callback[1]
+            update_callback_fn = callback[2]
+        except IndexError:
+            pass
     
         #  검사 대상 리스트에 파일을 등록
-        file_scan_list = [filename]
+        file_info = k2file.FileStruct(filename)
+        file_scan_list = [file_info]
         
         while len(file_scan_list):
             try:
-                real_name = file_scan_list.pop(0) # 검사 대상 파일 하나를 가짐
-        
+                t_file_info = file_scan_list.pop(0) # 검사 대상 파일 하나를 가짐
+                real_name = t_file_info.get_filename() # real_filename을 가져옴
+                
                 # 폴더면 내부 파일리스트만 검사 대상 리스트에 등록
                 if os.path.isdir(real_name):
                 # 폴더 등을 처리할 때를 위해 뒤에 붇는 os.sep는 우선 제거
@@ -388,13 +397,28 @@ class EngineInstance:
                 self.result['Folders'] += 1 # 폴더 개수 카운트
                 
                 if self.options['opt_list']: # 옵션 내용 중 모든 리스트 출력인가?
-                    if isinstance(cb_fn, types.FunctionType): # 콜백 함수가 존재하는가?
-                        cb_fn(ret_value) # 콜백 함수 호출
+                    if isinstance(scan_callback_fn, types.FunctionType): # 콜백 함수가 존재하는가?
+                        scan_callback_fn(ret_value) # 콜백 함수 호출
                 
                     # 폴더 안의 파일들을 검사대상 리스트에 추가
                     flist = glob.glob(real_name + os.sep + '*')
+                    tmp_flist = []
+                    for rfname in flist:
+                        tmp_info = k2file.FileStruct(rfname)
+                        tmp_flist.append(tmp_info)
+                        
                     file_scan_list = flist + file_scan_list
-                elif os.path.isfile(real_name): # 검사 대상이 파일인가?
+                elif os.path.isfile(real_name) or t_file_info.is_archive(): # 검사 대상이 파일인가? 압축 해제 대상인가?
+                    self.result['Files'] += 1 # 파일 개수 카운트
+                    
+                    # 압축된 파일이면 해제한다.
+                    ret = self.unarc(t_file_info)
+                    if ret:
+                        t_file_info = ret # 압축 결과물이 존재하면 파일 정보 교체
+                    
+                    # 포맷 분석
+                    ff = self.format(t_file_info)
+                    
                     # 3. 파일로 악성코드 검사
                     ret, vname, mid, eid = self.__scan_file(real_name)
 
@@ -403,24 +427,50 @@ class EngineInstance:
                         self.result['Infected_files'] += 1
                         self.identified_virus.update([vname])
 
-                    self.result['Files'] += 1 # 파일 개수 카운트
+                    # self.result['Files'] += 1 # 파일 개수 카운트
 
                     # 콜백 호출 또는 검사 리턴값 생성
                     ret_value['result'] = ret # 악성코드 발견 여부
                     ret_value['engine_id'] = eid # 엔진 ID
                     ret_value['virus_name'] = vname # 악성코드 이름
                     ret_value['virus_id'] = mid # 악성코드 ID
-                    ret_value['filename'] = real_name # 검사 파일 이름
-
-                    if self.options['opt_list']: # 모든 리스트 출력인가?
-                        if isinstance(cb_fn, types.FunctionType):
-                            cb_fn(ret_value)
-                        else: # 아니라면 악성코드인 것만 출력
-                            if ret_value['result']:
-                                if isinstance(cb_fn, types.FunctionType):
-                                    cb_fn(ret_value)
+                    ret_value['file_struct'] = t_file_info # 검사 파일 이름
+                    
+                    if ret_value['result']: # 악성코드 발견?
+                        if isinstance(scan_callback_fn, types.FrameType):
+                            action_type = scan_callback_fn(ret_value)
+                            
+                            if action_type == k2const.K2_ACTION_QUIT: # 종료?
+                                return 0
+                            
+                            # scan 콜백 함수의 리턴값에 따라 악성코드를 치료한다.
+                            self.__disinfect_process(ret_value, disinfect_callback_fn, action_type)
+                    else:
+                        if self.options['opt_list']: # 모든 리스트 출력?
+                            if isinstance(scan_callback_fn, types.FunctionType):
+                                scan_callback_fn(ret_value)
+                                
+                    # 압축 파일 최종 치료 처리
+                    self.__update_process(t_file_info, update_callback_fn)
+                    
+                    # if self.options['opt_list']: # 모든 리스트 출력인가?
+                    #     if isinstance(scan_callback_fn, types.FunctionType):
+                    #         scan_callback_fn(ret_value)
+                    #     else: # 아니라면 악성코드인 것만 출력
+                    #         if ret_value['result']:
+                    #             if isinstance(scan_callback_fn, types.FunctionType):
+                    #                 scan_callback_fn(ret_value)
+                    
+                    # 이미 해당 파일이 악성코드라고 판명되었다면
+                    # 그 파일을 압축 해제해서 내부를 볼 필요는 없다.
+                    if not ret: # 따라서 악성코드가 아닌 경우만 검사
+                        arc_file_list = self.arclist(t_file_info, ff)
+                        if len(arc_file_list):
+                            file_scan_list = arc_file_list + file_scan_list
             except KeyboardInterrupt:
                 return 1 # 키보드 종료
+            
+        self.__update_process(None, update_callback_fn, True) # 최종 파일 정리
         return 0 # 정상적으로 검사 종료
         
     def disinfect(self, filename, malware_id, engine_id):
@@ -472,3 +522,121 @@ class EngineInstance:
                 continue
             
         return signum
+    
+    def unarc(self, file_struct):
+        """플러그인 엔진에게 압축 해제를 요청한다.
+        Args:
+            args1: file_struct - 압축 해제 대상 파일 정보
+        Returns:
+            압축 해제된 파일 정보
+            None
+        """
+        rname_struct = None
+        
+        try:
+            if file_struct.is_archive(): # 압축인가?
+                arc_engine_id = file_struct.get_archive_engine_name()
+                arc_name = file_struct.get_archive_filename()
+                name_in_arc = file_struct.get_filename_in_archive()
+                
+                # 압축 해제 엔진 모듈의 unarc 멤버 함수 호출
+                for inst in self.kavmain_inst:
+                    try:
+                        unpack_data = inst.unarc(arc_engine_id, arc_name, name_in_arc)
+                        
+                        if unpack_data:
+                            # 압축을 해제하여 임시 파일을 생성
+                            rname = tempfile.mkstemp(prefix='ktmp')
+                            fp = open(rname, 'wb')
+                            
+                            fp.write(unpack_data)
+                            fp.close()
+                            
+                            rname_struct = file_struct
+                            rname_struct.set_filename(rname)
+                            break # 압축이 풀렸으면 종료
+                    except AttributeError:
+                        continue
+                    
+                return rname_struct
+        except IOError:
+            pass
+    
+        return None
+    
+    def arclist(self, file_struct, fileformat):
+        """플러그인 엔진에게 압축 파일의 내부 리스트를 요청한다.
+        Args:
+            args1: file_struct - 압축 해제 대상 파일 정보
+            args2: format - 미리 분석한 파일 포맷 분석 정보
+        Returns:
+            [압축 파일 내부 리스트]
+            []
+        """
+        arc_list = [] # 압축 파일 리스트
+        file_scan_list =[] # 검사 대상 정보를 모두 가짐(k2file.FileStruct)
+        
+        rname = file_struct.get_filename()
+        deep_name = file_struct.get_additional_filename()
+        mname = file_struct.get_master_filename()
+        level = file_struct.get_level()
+        
+        # 압축 엔진 모듈의 arclist 멤버 함수 호출
+        for inst in self.kavmain_inst:
+            try:
+                if self.options['opt_arc']: # 압축 검사 옵션이 있으면 모두 호출
+                    arc_list = inst.arclist(rname, fileformat)
+                    
+                if len(arc_list): # 압축 리스트가 존재한다면 추가하고 종료
+                    for alist in arc_list:
+                        arc_id = alist[0] # 항상 압축 엔진 ID가 들어옴
+                        name = alist[1] # 압축 파일의 내부 파일 이름
+                        
+                        if len(deep_name): # 압축 파일 내부 표시용
+                            dname = '%s%s' % (deep_name)
+                        else:
+                            dname = '%s' % name
+                            
+                        fs = k2file.FileStruct()
+                        # 기존 level보다 1증가 시켜 압축 깊이가 깊어짐을 표시
+                        fs.set_archive(arc_id, rname, name, dname, mname, False, False, level+1)
+                        file_scan_list.append(fs)
+                        
+                    self.result['Packed'] += 1
+                    break
+            except AttributeError:
+                continue
+            
+        return file_scan_list
+    
+    def format(self, file_struct):
+        """플러그인 엔진에게 파일 포맷 분석을 요청한다.
+        Args:
+            args1: file_struct - 압축 해제 대상 파일 정보
+        Returns:
+            {파일 포맷 분석 정보}
+            {}
+        """
+        ret = {}
+        filename = file_struct.get_filename()
+        
+        try:
+            fp = open(filename, 'rb')
+            mm = mmap.mmap(fp.fileno(), 0, access=mmap.ACCESS_READ)
+            
+            # 엔진 모듈 format 멤버 함수 호출
+            for inst in self.kavmain_inst:
+                try:
+                    ff = inst.format(mm, filename)
+                    if ff:
+                        ret.update(ff)
+                except AttributeError:
+                    pass
+                
+            mm.close()
+            fp.close()
+            
+        except IOError:
+            pass
+        
+        return ret
